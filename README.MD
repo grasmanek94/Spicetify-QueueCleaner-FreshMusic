@@ -20,6 +20,8 @@ It is possible to import extended streaming data (from Spotify Account Data Down
 ## Notes
 Somehow Spotify will often show "Spotify can't play this right now. If you have the file on your computer you can import it" when the extension is "cleaning the queue".
 
+Works best with small playlists, if the playlist is too big it might cause the extension to lagg your Spotify client. I'll try to fix that in the future.
+
 ## Import/Export
 A menu has been added which can be accessed by clicking the Profile Picture.
 It's called 'Queue Cleaner'.
