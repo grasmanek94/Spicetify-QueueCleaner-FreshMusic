@@ -13,9 +13,10 @@ const STORAGE_KEY = "keep-removing-tracks";
 const PLAYED_TRACKS_KEY = "queue-cleaner-played-tracks";
 
 let keepRemovingInterval = null;
-let menuItem = null;
+let enableButton = null;
 let playedTracks = null;
 let queueRevision = "";
+let queueCleanerMenu = null;
 
 function getPlayedTracks() {
     try {
@@ -148,7 +149,7 @@ function updateButton() {
     const enabled =
         Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
 
-    menuItem.element.style.opacity = enabled ? "1" : "0.25";
+    enableButton.element.style.opacity = enabled ? "1" : "0.25";
 }
 
 function toggleKeepRemoving() {
@@ -169,7 +170,7 @@ function toggleKeepRemoving() {
     );
 }
 
-function importPlaylistData(data) {
+function importPlaylistExport(data) {
     let imported = 0;
 
     if(playedTracks === null) {
@@ -230,9 +231,45 @@ function importExtendedStreamingHistory(data) {
     );
 }
 
+function importPlayedTracksExport(data) {
+    let imported = 0;
+
+    if (playedTracks === null) {
+        getPlayedTracks();
+    }
+
+    for (const uri of Object.keys(data)) {
+        if (!playedTracks[uri]) {
+            playedTracks[uri] = true;
+            imported++;
+        }
+    }
+
+    Spicetify.LocalStorage.set(
+        PLAYED_TRACKS_KEY,
+        JSON.stringify(playedTracks)
+    );
+
+    Spicetify.showNotification(
+        `Imported ${imported} exported tracks`
+    );
+}
+
 function importPlaylistDump(data) {
     if (!data) {
         throw new Error("Invalid data");
+    }
+
+    // Own export format
+    if (
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        Object.keys(data).some(
+            key => key.startsWith("spotify:track:")
+        )
+    ) {
+        console.log("Detected played tracks export");
+        return importPlayedTracksExport(data);
     }
 
     // Playlist export
@@ -279,19 +316,15 @@ function openImportDialog() {
     const input = document.createElement("input");
 
     input.type = "file";
+    input.multiple = true;
     input.accept = ".json,application/json";
 
     input.onchange = async event => {
-        const file = event.target.files?.[0];
-
-        if (!file) {
-            return;
+        for (const file of event.target.files) {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            importPlaylistDump(data);
         }
-
-        const text = await file.text();
-        const data = JSON.parse(text);
-
-        importPlaylistDump(data);
     };
 
     input.click();
@@ -308,19 +341,12 @@ function addPlayerTracker() {
             addPlayedTrack(currentTrackUri);
         }
     });
-
-    new Spicetify.Playbar.Button(
-        "Import listened tracks",
-        "download",
-        openImportDialog,
-        false
-    );
 }
 
 function addRemoverButtonsAndTimers() {
     let enabled = Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
 
-	menuItem = new Spicetify.Playbar.Button(
+	enableButton = new Spicetify.Playbar.Button(
         "Keep removing tracks",
         "check",
         toggleKeepRemoving,
@@ -334,6 +360,50 @@ function addRemoverButtonsAndTimers() {
     updateButton();
 }
 
+    // Download JSON
+function downloadTracks() {
+    const blob = new Blob(
+        [JSON.stringify(playedTracks ?? {}, null, 2)],
+        { type: "application/json" }
+    );
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `played-tracks-${Date.now()}.json`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
+function addMenu() {
+    queueCleanerMenu = new Spicetify.Menu.SubMenu(
+        "Queue Cleaner",
+        [
+            new Spicetify.Menu.Item(
+                "Import listened tracks",
+                false,
+                openImportDialog
+            ),
+
+            new Spicetify.Menu.Item(
+                "Export listened tracks",
+                false,
+                downloadTracks
+            ),
+
+            /*new Spicetify.Menu.Item(
+                "Clear listened tracks",
+                false,
+                () => queue_cleaner.clear()
+            )*/
+        ]
+    );
+
+    queueCleanerMenu.register();
+}
+
 function main() {
     console.log("My extension loaded!");
 
@@ -342,6 +412,7 @@ function main() {
 	console.log("Menu:", Spicetify.Menu);
 	console.log("Menu.Item:", Spicetify.Menu?.Item);
 
+    addMenu();
     addRemoverButtonsAndTimers();
     addPlayerTracker();
 
@@ -392,25 +463,13 @@ function main() {
 
         // Download JSON
         download() {
-            const blob = new Blob(
-                [JSON.stringify(playedTracks ?? {}, null, 2)],
-                { type: "application/json" }
-            );
-
-            const url = URL.createObjectURL(blob);
-
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `played-tracks-${Date.now()}.json`;
-            a.click();
-
-            URL.revokeObjectURL(url);
+            downloadTracks();
         },
 
         // Statistics
         stats() {
             return {
-                trackCount: Object.keys(playedTracks).length,
+                trackCount: Object.keys(playedTracks ?? {}).length,
                 enabled:
                     Spicetify.LocalStorage.get(STORAGE_KEY) === "true",
                 timerRunning: keepRemovingInterval !== null,
@@ -433,7 +492,7 @@ function main() {
         save() {
             Spicetify.LocalStorage.set(
                 PLAYED_TRACKS_KEY,
-                JSON.stringify(playedTracks)
+                JSON.stringify(playedTracks ?? {})
             );
         }
     };
