@@ -17,6 +17,7 @@ let enableButton = null;
 let playedTracks = null;
 let queueRevision = "";
 let queueCleanerMenu = null;
+let keepRemovingEnabled = false;
 
 function getPlayedTracks() {
     try {
@@ -72,7 +73,7 @@ async function removeNonEnhancedRecommendations() {
         return;
     }
 
-    while (true) {
+    while (keepRemovingEnabled) {
         const toRemove = Spicetify.Queue.nextTracks
             .map(track => track?.contextTrack)
             .filter(
@@ -94,7 +95,7 @@ async function removeNonEnhancedRecommendations() {
 }
 
 async function removeListenedTracks() {
-    while (true) {
+    while (keepRemovingEnabled) {
         const toRemove = Spicetify.Queue.nextTracks
             .map(track => track?.contextTrack)
             .filter(
@@ -156,6 +157,7 @@ function toggleKeepRemoving() {
     let enabled = Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
     enabled = !enabled;
 
+    keepRemovingEnabled = enabled;
     Spicetify.LocalStorage.set(STORAGE_KEY, String(enabled));
 
     if (enabled) {
