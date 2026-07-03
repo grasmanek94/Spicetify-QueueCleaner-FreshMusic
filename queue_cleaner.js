@@ -19,6 +19,7 @@ let queueRevision = "";
 let queueCleanerMenu = null;
 let keepRemovingEnabled = false;
 let previousTrack = null;
+let banInRadioDisabled = true;
 
 function getPlayedTracks() {
     try {
@@ -63,6 +64,10 @@ function hasPlayedTrack(uri) {
 }
 
 async function banSmartShuffleOrRadioTracks(contextTracks) {
+    if(banInRadioDisabled) {
+        return;
+    }
+    
     let state = Spicetify.Platform.PlayerAPI.getState();
 
     if((state === null) || (state.context === null)) {
