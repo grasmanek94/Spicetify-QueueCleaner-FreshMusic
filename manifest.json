@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Queue Cleaner",
+    "description": "Cleans the queue of music that you've already heard. Allows backup of listened songs, and import of them, including import of playlists and Spotify extended streaming history",
+    "preview": "preview.png",
+    "main": "queue_cleaner.js",
+    "readme": "README.md",
+    "authors": [
+      { "name": "grasmanek94", "url": "https://github.com/grasmanek94" }
+    ],
+    "tags": ["queue", "cleaner", "fresh", "music"]
+  }
+]
