@@ -62,28 +62,32 @@ function hasPlayedTrack(uri) {
     return !!playedTracks[uri];
 }
 
-async function banTracksInRadio(contextTracks) {
+async function banSmartShuffleOrRadioTracks(contextTracks) {
     let state = Spicetify.Platform.PlayerAPI.getState();
 
-    if( state === null || 
-        state.context === null || 
-        state.context.metadata === null ||
-        state.context.metadata.context_owner !== "spotify" ||
-        state.context.metadata.format_list_type !== "inspiredby-mix") {
+    if((state === null) || (state.context === null)) {
         return;
     }
 
-    for (const contextTrack of contextTracks) {
-        await Spicetify.Platform.FeedbackAPI.addContextTrackBan(
-            state.context.uri,
-            contextTrack.uri,
-            "context"
-        );
+    let is_radio = (state.context.metadata !== null) &&
+        (state.context.metadata.context_owner === "spotify") &&
+        (state.context.metadata.format_list_type === "inspiredby-mix");
 
-        await Spicetify.Platform.FeedbackAPI.addContextTrackBan(
-            state.context.uri,
-            contextTrack.uri
-        );
+    for (const contextTrack of contextTracks) {
+        let ban_track = is_radio || (contextTrack?.metadata?.provider == "enhanced_recommendation");
+
+        if(ban_track) {
+            void Spicetify.Platform.FeedbackAPI.addContextTrackBan(
+                state.context.uri,
+                contextTrack.uri,
+                "context"
+            ).catch(console.error);
+
+            void Spicetify.Platform.FeedbackAPI.addContextTrackBan(
+                state.context.uri,
+                contextTrack.uri
+            ).catch(console.error);
+        }
     }
 }
 
@@ -113,7 +117,8 @@ async function removeNonEnhancedRecommendations() {
         }
 
         console.log(`Removing ${toRemove.length} track(s)...`);
-        await banTracksInRadio(toRemove);
+
+        banSmartShuffleOrRadioTracks(toRemove);
         await Spicetify.removeFromQueue(toRemove);
 
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -136,7 +141,8 @@ async function removeListenedTracks() {
         }
 
         console.log(`Removing ${toRemove.length} listened track(s)...`);
-        await banTracksInRadio(toRemove);
+
+        banSmartShuffleOrRadioTracks(toRemove);
         await Spicetify.removeFromQueue(toRemove);
 
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -174,20 +180,15 @@ function stopKeepRemoving() {
 }
 
 function updateButton() {
-    const enabled =
-        Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
-
-    enableButton.element.style.opacity = enabled ? "1" : "0.25";
+    enableButton.element.style.opacity = keepRemovingEnabled ? "1" : "0.25";
 }
 
 function toggleKeepRemoving() {
-    let enabled = Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
-    enabled = !enabled;
+    keepRemovingEnabled = !keepRemovingEnabled;
 
-    keepRemovingEnabled = enabled;
-    Spicetify.LocalStorage.set(STORAGE_KEY, String(enabled));
+    Spicetify.LocalStorage.set(STORAGE_KEY, String(keepRemovingEnabled));
 
-    if (enabled) {
+    if (keepRemovingEnabled) {
         startKeepRemoving();
     } else {
         stopKeepRemoving();
@@ -195,7 +196,7 @@ function toggleKeepRemoving() {
 
     updateButton();
     Spicetify.showNotification(
-        `Keep removing: ${enabled ? "ON" : "OFF"}`
+        `Keep removing: ${keepRemovingEnabled ? "ON" : "OFF"}`
     );
 }
 
@@ -364,7 +365,7 @@ function addPlayerTracker() {
 
     Spicetify.Player.addEventListener("songchange", () => {
         if(previousTrack !== null && keepRemovingEnabled) {
-            banTracksInRadio([previousTrack]);
+            banSmartShuffleOrRadioTracks([previousTrack]);
         }
 
         const currentTrackUri = Spicetify.Player.data?.item?.uri;
@@ -378,7 +379,7 @@ function addPlayerTracker() {
 }
 
 function addRemoverButtonsAndTimers() {
-    let enabled = Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
+    keepRemovingEnabled = Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
 
 	enableButton = new Spicetify.Playbar.Button(
         "Keep removing tracks",
@@ -387,7 +388,7 @@ function addRemoverButtonsAndTimers() {
         false
     );
 
-    if (enabled) {
+    if (keepRemovingEnabled) {
         startKeepRemoving();
     }
 
@@ -461,7 +462,7 @@ function main() {
         },
 
         get enabled() {
-            return Spicetify.LocalStorage.get(STORAGE_KEY) === "true";
+            return keepRemovingEnabled;
         },
 
         get queueRevision() {
