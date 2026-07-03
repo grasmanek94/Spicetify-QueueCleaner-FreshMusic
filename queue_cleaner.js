@@ -18,6 +18,7 @@ let playedTracks = null;
 let queueRevision = "";
 let queueCleanerMenu = null;
 let keepRemovingEnabled = false;
+let previousTrack = null;
 
 function getPlayedTracks() {
     try {
@@ -61,15 +62,39 @@ function hasPlayedTrack(uri) {
     return !!playedTracks[uri];
 }
 
+async function banTracksInRadio(contextTracks) {
+    let state = Spicetify.Platform.PlayerAPI.getState();
+
+    if( state === null || 
+        state.context === null || 
+        state.context.metadata === null ||
+        state.context.metadata.context_owner !== "spotify" ||
+        state.context.metadata.format_list_type !== "inspiredby-mix") {
+        return;
+    }
+
+    for (const contextTrack of contextTracks) {
+        await Spicetify.Platform.FeedbackAPI.addContextTrackBan(
+            state.context.uri,
+            contextTrack.uri,
+            "context"
+        );
+
+        await Spicetify.Platform.FeedbackAPI.addContextTrackBan(
+            state.context.uri,
+            contextTrack.uri
+        );
+    }
+}
+
 async function removeNonEnhancedRecommendations() {
     const state = Spicetify.Player.data;
 
     if (
         !state?.restrictions?.canToggleSmartShuffle ||
-        !state?.shuffle ||
         !state?.smartShuffle
     ) {
-        console.log("Smart Shuffle not enabled.");
+        console.log("Smart Shuffle not enabled, skipping recommended track search.");
         return;
     }
 
@@ -88,6 +113,7 @@ async function removeNonEnhancedRecommendations() {
         }
 
         console.log(`Removing ${toRemove.length} track(s)...`);
+        await banTracksInRadio(toRemove);
         await Spicetify.removeFromQueue(toRemove);
 
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -110,6 +136,7 @@ async function removeListenedTracks() {
         }
 
         console.log(`Removing ${toRemove.length} listened track(s)...`);
+        await banTracksInRadio(toRemove);
         await Spicetify.removeFromQueue(toRemove);
 
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -336,7 +363,12 @@ function addPlayerTracker() {
     getPlayedTracks();
 
     Spicetify.Player.addEventListener("songchange", () => {
+        if(previousTrack !== null && keepRemovingEnabled) {
+            banTracksInRadio([previousTrack]);
+        }
+
         const currentTrackUri = Spicetify.Player.data?.item?.uri;
+        previousTrack = Spicetify.Player.data?.item;
 
         // Add newly started track
         if (currentTrackUri) {
